@@ -103,9 +103,9 @@ module JSONAPI
 
       def deserialize_attr(key, val)
         hash = if self.class.attr_blocks.key?(key)
-                 self.class.attr_blocks[key].call(val)
+                 self.class.attr_blocks[key].call(val, @attributes)
                else
-                 configuration.default_attribute.call(key, val)
+                 configuration.default_attribute.call(key, val, @attributes)
                end
         register_mappings(hash.keys, "/data/attributes/#{key}")
         hash
