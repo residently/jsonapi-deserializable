@@ -1,6 +1,4 @@
-require 'jsonapi/deserializable/resource/configuration'
 require 'jsonapi/deserializable/resource/dsl'
-require 'jsonapi/parser/resource'
 
 module JSONAPI
   module Deserializable
@@ -10,47 +8,42 @@ module JSONAPI
       class << self
         attr_accessor :type_block, :id_block, :attr_blocks,
                       :has_one_rel_blocks, :has_many_rel_blocks,
-                      :configuration
+                      :default_attr_block, :default_has_one_rel_block,
+                      :default_has_many_rel_block,
+                      :key_formatter
       end
 
-      @class_cache = {}
-
-      self.configuration       = Configuration.new
       self.attr_blocks         = {}
       self.has_one_rel_blocks  = {}
       self.has_many_rel_blocks = {}
+      self.key_formatter       = proc { |k| k }
 
       def self.inherited(klass)
         super
-        klass.configuration       = configuration.dup
         klass.type_block          = type_block
         klass.id_block            = id_block
         klass.attr_blocks         = attr_blocks.dup
         klass.has_one_rel_blocks  = has_one_rel_blocks.dup
         klass.has_many_rel_blocks = has_many_rel_blocks.dup
-      end
-
-      def self.configure
-        yield(configuration)
-      end
-
-      def self.[](name)
-        @class_cache[name] ||= Class.new(self)
+        klass.default_attr_block  = default_attr_block
+        klass.default_has_one_rel_block   = default_has_one_rel_block
+        klass.default_has_many_rel_block  = default_has_many_rel_block
+        klass.key_formatter = key_formatter
       end
 
       def self.call(payload)
         new(payload).to_h
       end
 
-      def initialize(payload)
-        Parser::Resource.parse!(payload)
-        @document = payload
-        @data = @document['data']
+      def initialize(payload, root: '/data')
+        @data = payload || {}
+        @root = root
         @type = @data['type']
         @id   = @data['id']
         @attributes    = @data['attributes'] || {}
         @relationships = @data['relationships'] || {}
         deserialize!
+
         freeze
       end
 
@@ -63,13 +56,9 @@ module JSONAPI
 
       private
 
-      def configuration
-        self.class.configuration
-      end
-
       def register_mappings(keys, path)
         keys.each do |k|
-          @reverse_mapping[k] = path
+          @reverse_mapping[k] = @root + path
         end
       end
 
@@ -81,17 +70,20 @@ module JSONAPI
       end
 
       def deserialize_type
-        block = self.class.type_block || configuration.default_type
+        block = self.class.type_block
+        return {} unless block
+
         hash = block.call(@type)
-        register_mappings(hash.keys, '/data/type')
+        register_mappings(hash.keys, '/type')
         hash
       end
 
       def deserialize_id
-        return {} unless @id
-        block = self.class.id_block || configuration.default_id
-        hash  = block.call(@id)
-        register_mappings(hash.keys, '/data/id')
+        block = self.class.id_block
+        return {} unless @id && block
+
+        hash = block.call(@id)
+        register_mappings(hash.keys, '/id')
         hash
       end
 
@@ -102,12 +94,11 @@ module JSONAPI
       end
 
       def deserialize_attr(key, val)
-        hash = if self.class.attr_blocks.key?(key)
-                 self.class.attr_blocks[key].call(val, @attributes)
-               else
-                 configuration.default_attribute.call(key, val, @attributes)
-               end
-        register_mappings(hash.keys, "/data/attributes/#{key}")
+        block = self.class.attr_blocks[key] || self.class.default_attr_block
+        return {} unless block
+
+        hash = block.call(val, self.class.key_formatter.call(key), @attributes)
+        register_mappings(hash.keys, "/attributes/#{key}")
         hash
       end
 
@@ -118,36 +109,38 @@ module JSONAPI
       end
 
       def deserialize_rel(key, val)
-        hash = if val['data'].is_a?(Array)
-                 deserialize_has_many_rel(key, val)
-               else
-                 deserialize_has_one_rel(key, val)
-               end
-        register_mappings(hash.keys, "/data/relationships/#{key}")
-        hash
+        if val['data'].is_a?(Array)
+          deserialize_has_many_rel(key, val)
+        else
+          deserialize_has_one_rel(key, val)
+        end
       end
 
       # rubocop: disable Metrics/AbcSize
       def deserialize_has_one_rel(key, val)
+        block = self.class.has_one_rel_blocks[key] ||
+                self.class.default_has_one_rel_block
+        return {} unless block
+
         id   = val['data'] && val['data']['id']
         type = val['data'] && val['data']['type']
-        if self.class.has_one_rel_blocks.key?(key)
-          self.class.has_one_rel_blocks[key].call(val, id, type)
-        else
-          configuration.default_has_one.call(key, val, id, type)
-        end
+        hash = block.call(val, id, type, self.class.key_formatter.call(key))
+        register_mappings(hash.keys, "/relationships/#{key}")
+        hash
       end
       # rubocop: enable Metrics/AbcSize
 
       # rubocop: disable Metrics/AbcSize
       def deserialize_has_many_rel(key, val)
+        block = self.class.has_many_rel_blocks[key] ||
+                self.class.default_has_many_rel_block
+        return {} unless block && val['data'].is_a?(Array)
+
         ids   = val['data'].map { |ri| ri['id'] }
         types = val['data'].map { |ri| ri['type'] }
-        if self.class.has_many_rel_blocks.key?(key)
-          self.class.has_many_rel_blocks[key].call(val, ids, types)
-        else
-          configuration.default_has_many.call(key, val, ids, types)
-        end
+        hash = block.call(val, ids, types, self.class.key_formatter.call(key))
+        register_mappings(hash.keys, "/relationships/#{key}")
+        hash
       end
       # rubocop: enable Metrics/AbcSize
     end

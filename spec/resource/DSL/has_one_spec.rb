@@ -12,12 +12,10 @@ describe JSONAPI::Deserializable::Resource, '.has_one' do
   context 'relationship is not nil' do
     let(:payload) do
       {
-        'data' => {
-          'type' => 'foo',
-          'relationships' => {
-            'foo' => {
-              'data' => { 'type' => 'foo', 'id' => 'bar' }
-            }
+        'type' => 'foo',
+        'relationships' => {
+          'foo' => {
+            'data' => { 'type' => 'foo', 'id' => 'bar' }
           }
         }
       }
@@ -26,16 +24,17 @@ describe JSONAPI::Deserializable::Resource, '.has_one' do
     it 'creates corresponding fields' do
       actual = deserializable_foo.call(payload)
       expected = { foo_id: 'bar', foo_type: 'foo',
-                   foo_rel: payload['data']['relationships']['foo'],
-                   type: 'foo' }
+                   foo_rel: payload['relationships']['foo'] }
 
       expect(actual).to eq(expected)
     end
 
     it 'defaults to creating #{name}_id and #{name}_type' do
-      klass = JSONAPI::Deserializable::Resource
+      klass = Class.new(JSONAPI::Deserializable::Resource) do
+        has_one
+      end
       actual = klass.call(payload)
-      expected = { foo_id: 'bar', foo_type: 'foo', type: 'foo' }
+      expected = { foo_id: 'bar', foo_type: 'foo' }
 
       expect(actual).to eq(expected)
     end
@@ -44,20 +43,17 @@ describe JSONAPI::Deserializable::Resource, '.has_one' do
   context 'relationship value is nil' do
     it 'creates corresponding fields' do
       payload = {
-        'data' => {
-          'type' => 'foo',
-          'relationships' => {
-            'foo' => {
-              'data' => nil
-            }
+        'type' => 'foo',
+        'relationships' => {
+          'foo' => {
+            'data' => nil
           }
         }
       }
 
       actual = deserializable_foo.call(payload)
       expected = { foo_id: nil, foo_type: nil,
-                   foo_rel: payload['data']['relationships']['foo'],
-                   type: 'foo' }
+                   foo_rel: payload['relationships']['foo'] }
 
       expect(actual).to eq(expected)
     end
@@ -66,13 +62,11 @@ describe JSONAPI::Deserializable::Resource, '.has_one' do
   context 'relationship is absent' do
     it 'does not create corresponding fields' do
       payload = {
-        'data' => {
-          'type' => 'foo',
-          'relationships' => {}
-        }
+        'type' => 'foo',
+        'relationships' => {}
       }
       actual = deserializable_foo.call(payload)
-      expected = { type: 'foo' }
+      expected = {}
 
       expect(actual).to eq(expected)
     end
@@ -80,13 +74,9 @@ describe JSONAPI::Deserializable::Resource, '.has_one' do
 
   context 'there is no relationships member' do
     it 'does not create corresponding fields' do
-      payload = {
-        'data' => {
-          'type' => 'foo'
-        }
-      }
+      payload = { 'type' => 'foo' }
       actual = deserializable_foo.call(payload)
-      expected = { type: 'foo' }
+      expected = {}
 
       expect(actual).to eq(expected)
     end

@@ -12,15 +12,13 @@ describe JSONAPI::Deserializable::Resource, '.has_many' do
   context 'relationship is not empty' do
     let(:payload) do
       {
-        'data' => {
-          'type' => 'foo',
-          'relationships' => {
-            'foo' => {
-              'data' => [
-                { 'type' => 'foo', 'id' => 'bar' },
-                { 'type' => 'foo', 'id' => 'baz' }
-              ]
-            }
+        'type' => 'foo',
+        'relationships' => {
+          'foo' => {
+            'data' => [
+              { 'type' => 'foo', 'id' => 'bar' },
+              { 'type' => 'foo', 'id' => 'baz' }
+            ]
           }
         }
       }
@@ -29,16 +27,17 @@ describe JSONAPI::Deserializable::Resource, '.has_many' do
     it 'creates corresponding fields' do
       actual = deserializable_foo.call(payload)
       expected = { foo_ids: %w(bar baz), foo_types: %w(foo foo),
-                   foo_rel: payload['data']['relationships']['foo'],
-                   type: 'foo' }
+                   foo_rel: payload['relationships']['foo'] }
 
       expect(actual).to eq(expected)
     end
 
     it 'defaults to creating a #{name}_ids and #{name}_types fields' do
-      klass = JSONAPI::Deserializable::Resource
+      klass = Class.new(JSONAPI::Deserializable::Resource) do
+        has_many
+      end
       actual = klass.call(payload)
-      expected = { foo_ids: %w(bar baz), foo_types: %w(foo foo), type: 'foo' }
+      expected = { foo_ids: %w(bar baz), foo_types: %w(foo foo) }
 
       expect(actual).to eq(expected)
     end
@@ -47,19 +46,16 @@ describe JSONAPI::Deserializable::Resource, '.has_many' do
   context 'relationship is empty' do
     it 'creates corresponding fields' do
       payload = {
-        'data' => {
-          'type' => 'foo',
-          'relationships' => {
-            'foo' => {
-              'data' => []
-            }
+        'type' => 'foo',
+        'relationships' => {
+          'foo' => {
+            'data' => []
           }
         }
       }
       actual = deserializable_foo.call(payload)
       expected = { foo_ids: [], foo_types: [],
-                   foo_rel: payload['data']['relationships']['foo'],
-                   type: 'foo' }
+                   foo_rel: payload['relationships']['foo'] }
 
       expect(actual).to eq(expected)
     end
@@ -68,13 +64,11 @@ describe JSONAPI::Deserializable::Resource, '.has_many' do
   context 'relationship is absent' do
     it 'does not create corresponding fields' do
       payload = {
-        'data' => {
-          'type' => 'foo',
-          'relationships' => {}
-        }
+        'type' => 'foo',
+        'relationships' => {}
       }
       actual = deserializable_foo.call(payload)
-      expected = { type: 'foo' }
+      expected = {}
 
       expect(actual).to eq(expected)
     end
@@ -82,13 +76,9 @@ describe JSONAPI::Deserializable::Resource, '.has_many' do
 
   context 'there is no relationships member' do
     it 'does not create corresponding fields' do
-      payload = {
-        'data' => {
-          'type' => 'foo'
-        }
-      }
+      payload = { 'type' => 'foo' }
       actual = deserializable_foo.call(payload)
-      expected = { type: 'foo' }
+      expected = {}
 
       expect(actual).to eq(expected)
     end
