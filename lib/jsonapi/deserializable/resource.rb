@@ -97,7 +97,7 @@ module JSONAPI
         block = self.class.attr_blocks[key] || self.class.default_attr_block
         return {} unless block
 
-        hash = block.call(val, self.class.key_formatter.call(key))
+        hash = block.call(val, self.class.key_formatter.call(key), @attributes)
         register_mappings(hash.keys, "/attributes/#{key}")
         hash
       end
